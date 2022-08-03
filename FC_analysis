@@ -1,0 +1,59 @@
+# this script uses ANTSregistration to transform Harvard-Oxford Cortical and Subcortical probability maps (already thresholded) to native anatomical and functional space.
+# make sure that masks are saved in format: harvardoxford-cortical_BrainRegion50.nii.gz
+# if needed, export a path at the beginning of this bash file to maintain BIDS format
+
+module load ants
+
+# loop through subject folders
+SUBS="sub-*/"
+
+for i in $SUBS
+
+# Create string variable to put in filenames (i.e. 'sub-01')
+SUB=echo "$i"
+
+do
+
+	# loop through folders corresponding to different sessions
+
+	SESSIONS="ses-*/"
+
+	for s in $SESSIONS
+	
+	# Create string variable to put in filenames (i.e. 'ses-1')
+	SES=echo "$s"
+
+	do
+		echo "Processing $SUB, $SES..."	
+	
+		MASKS="/home/mdbet/scratch/FC_ROIs/harvardoxford-*.nii.gz"
+
+		# loop through the Harvard-Oxford masks: i = filename of each brain region (i.e. harvardoxford-cortical_BrainReg50.nii.gz
+		for m in $MASKS
+		do
+
+		# convert filename to string and extract brain region: ROI = BRAINREG.nii.gz
+		MASK=$(echo "$m" | cut -d'_' -f 2) # e.g. InsularCortex50.nii.gz
+
+		# lose the nifti tag
+		ROI=$(echo "$MASK" | cut -d'.' -f 1) # e.g. InsularCortex50
+
+		# create output names specific for each brain region
+		ANAT=$(echo "$SUB_$SES_space-anat_$ROI.nii.gz")
+		FUNC=$(echo "$SUB_$SES_space-func_$ROI.nii.gz")
+
+		# transform from std space to anat space
+		call_antsapplytransforms-1 -v -t 'gen' $SUB_$SES_acq-MP2RAGE_desc-preproc_T1w.nii.gz $m $ANAT $SUB_$SES_acq-MP2RAGE_from-MNI152NLin6Asym_to-T1w_mode-image_xfm.h5
+
+		# transform from anat space to func space
+		call_antsapplytransforms-1 -v -t 'gen' -i 1 $SUB_$SES_task-rest_run-1_boldref.nii.gz $ANAT $FUNC out_fwd.tfm
+
+		# Extract mean timeseries for every brain region
+		fslmeants -i preproc_lvl1.feat/filtered_func_data.nii.gz -o $SUB_$SES_meants_$ROI.nii.gz -m $FUNC
+		
+		# close brain region loop; continue with next brain region
+		done
+	#close session loop; continue with next session
+	done
+# close subject loop; continue with the next subject
+done
